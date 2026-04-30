@@ -370,12 +370,24 @@ class FormComponent(BaseComponent):
         else:
             table1, table2, before, after = "", "", "", ""
 
-        end = ""
-        if isinstance(self.submit, list):
+        after_table = ""
+        if self.table and self.is_javascript_form:
+            end = self._javascript_submit_html()
+            after_table = self._javascript_feedback_html()
+        elif isinstance(self.submit, list):
+            end = ""
             for text in self.submit:
                 end += "&nbsp;" + self.end_form(text, name="submit")
         else:
             end = self.end_form(self.submit)
+
+        if self.table:
+            return f"""\n{self.begin_form()}\n{table1}
+{all_options}\n
+        {before}{end}{after}
+        {table2}
+        {after_table}
+        </form>"""
 
         return f"""\n{table1}{self.begin_form()}\n{all_options}\n
         {before}{end}{after}
@@ -589,42 +601,52 @@ class FormComponent(BaseComponent):
     ) -> str:
         """HTML to end form."""
         if self.is_javascript_form:
-            reload = (
-                '<button id="reloadButton">Reload</button>'
-                if self.js_load_function
-                else ""
+            return (
+                self._javascript_submit_html()
+                + self._javascript_feedback_html()
             )
-            ret_str = f"""
+
+        name_attr = f'name="{name}"' if name else ""
+        return f'<input type="submit" {name_attr} value="{submit}">'
+
+    def _javascript_submit_html(self) -> str:
+        """Return the submit controls for a JavaScript-backed form."""
+        reload = (
+            '<button id="reloadButton">Reload</button>'
+            if self.js_load_function
+            else ""
+        )
+        return f"""
             <div style="margin-top: 20px;">
                 <button type="submit" id="submitButton">
                     {self.save_button_text}</button>
             </div>
                 {reload}\n"""
-            ret_str += (
-                """
+
+    def _javascript_feedback_html(self) -> str:
+        """Return JavaScript form feedback/results markup."""
+        ret_str = (
+            """
             <div id="response" class="response">
                 <h3>Server Response:</h3>
                 <div id="responseContent" class="monoleft"></div>
             </div>\n"""
-                if self.js_results
-                else '<div id="zz_message_zz"></div>'
-            )
-            if self.js_loading_text:
-                ret_str += f"""
+            if self.js_results
+            else '<div id="zz_message_zz"></div>'
+        )
+        if self.js_loading_text:
+            ret_str += f"""
                 <div class="loading-container">
                     <div class="loading" id="loadingIndicator">
                         {self.js_loading_text}</div>
                 </div>\n"""
-            if self.history_title:
-                ret_str += f"""
+        if self.history_title:
+            ret_str += f"""
             <div id="historyContainer" class="history-container">
                 <h2>{self.history_title}</h2>
                 <div id="qaHistory"></div>
             </div>\n"""
-            return ret_str
-
-        name_attr = f'name="{name}"' if name else ""
-        return f'<input type="submit" {name_attr} value="{submit}">'
+        return ret_str
 
     def add_busy_spinner(self) -> str:
         """Returns the HTML code for a busy spinner."""

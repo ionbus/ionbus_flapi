@@ -307,6 +307,27 @@ class TestFormComponent:
         html = form.get_html()
         assert "<table>" in html
 
+    def test_js_results_table_response_outside_table(self):
+        """Test JS table forms render response outside the table."""
+        from ionbus_flapi.components.form import FormComponent, FormElement
+
+        elements = [
+            FormElement(name="field1", box=True),
+        ]
+        form = FormComponent(
+            elements=elements,
+            js_results=True,
+            js_save_function="/submit",
+            name="test",
+            table=True,
+        )
+
+        html = form.get_html()
+        assert html.index('<form id="test"') < html.index("<table>")
+        assert html.index('id="submitButton"') < html.index("</table>")
+        assert html.index("</table>") < html.index('id="response"')
+        assert html.index('id="response"') < html.index("</form>")
+
     def test_form_component_submit_button(self):
         """Test FormComponent submit button."""
         from ionbus_flapi.components.form import FormComponent, FormElement
