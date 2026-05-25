@@ -13,6 +13,7 @@ from ionbus_flapi.components.base import (
     PlotlyComponent,
 )
 from ionbus_flapi.components.dataframe import (
+    ClickHook,
     FrameComponent,
     SELECTION_MODES,
     cleanup_frame_values_for_js,
@@ -29,6 +30,7 @@ from ionbus_flapi.components.form import (
 from ionbus_flapi.components.layout import (
     ColumnsContainer,
     Container,
+    IframeComponent,
     banner_html,
     component_factory,
     pop_banner_js,
@@ -47,6 +49,7 @@ __all__ = [
     "ImageComponent",
     "PlotlyComponent",
     # dataframe
+    "ClickHook",
     "FrameComponent",
     "SELECTION_MODES",
     "cleanup_frame_values_for_js",
@@ -61,6 +64,7 @@ __all__ = [
     # layout
     "ColumnsContainer",
     "Container",
+    "IframeComponent",
     "banner_html",
     "component_factory",
     "pop_banner_js",

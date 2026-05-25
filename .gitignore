@@ -27,3 +27,4 @@ _version.py
 build/ 
 .oldgit/ 
 cred.zip 
+uv.lock 

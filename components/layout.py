@@ -5,6 +5,7 @@ Layout components for organizing content.
 
 from __future__ import annotations
 
+import html
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pandas as pd
@@ -138,6 +139,68 @@ class ColumnsContainer(Container):
             ret_str += f"<div>\n{component.get_html()}\n</div>\n"
         ret_str += f"{nobr_end}</div>"
         return ret_str
+
+
+class IframeComponent(BaseComponent):
+    """Named iframe component for use as a ClickHook target.
+
+    The `frame_name` attribute becomes the HTML `name=""` on the iframe;
+    set the same string as a ClickHook's `target` to make grid clicks
+    load URLs into this iframe.
+
+    Security note: `frame_name`, `src`, `width`, and `height` are
+    HTML-escaped on render. `style` is interpolated raw — it's intended
+    for app-author-controlled inline CSS (e.g. `"width: 100%; height:
+    240px"`). Do NOT pass untrusted input through `style`.
+    """
+
+    class_name: ClassVar[str] = "IframeComponent"
+    frame_name: str = ""
+    src: str = "about:blank"
+    width: str | None = None
+    height: str | None = None
+    style: str | None = None
+
+    def __init__(
+        self,
+        frame_name: str,
+        src: str = "about:blank",
+        width: str | None = None,
+        height: str | None = None,
+        style: str | None = None,
+        page: FlapiPage | None = None,
+        name: str | int = "",
+        **kwargs: Any,
+    ):
+        if not frame_name:
+            raise ValueError("IframeComponent requires a non-empty frame_name")
+        self.frame_name = frame_name
+        self.src = src
+        self.width = width
+        self.height = height
+        self.style = style
+        super().__init__(page, name, **kwargs)
+
+    def get_html(self) -> str:
+        style_bits = []
+        if self.width is not None:
+            style_bits.append(f"width: {html.escape(self.width, quote=True)}")
+        if self.height is not None:
+            style_bits.append(
+                f"height: {html.escape(self.height, quote=True)}"
+            )
+        if self.style:
+            # Trusted raw CSS — see class docstring.
+            style_bits.append(self.style)
+        style_attr = (
+            f' style="{"; ".join(style_bits)}"' if style_bits else ""
+        )
+        return (
+            f'<iframe id="iframe{html.escape(self.name, quote=True)}" '
+            f'name="{html.escape(self.frame_name, quote=True)}" '
+            f'src="{html.escape(self.src, quote=True)}"{style_attr}>'
+            f'</iframe>'
+        )
 
 
 def pop_banner_js(duration: int | float = 3) -> str:

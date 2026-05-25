@@ -61,6 +61,7 @@ from ionbus_flapi.event_stream import (
 )
 from ionbus_flapi.components import (
     BaseComponent,
+    ClickHook,
     ColumnsContainer,
     Container,
     DashComponent,
@@ -68,6 +69,7 @@ from ionbus_flapi.components import (
     FormElement,
     FrameComponent,
     HtmlComponent,
+    IframeComponent,
     ImageComponent,
     MarkdownComponent,
     PlotlyComponent,
@@ -124,6 +126,7 @@ __all__ = [
     "EventStreamTypes",
     # components
     "BaseComponent",
+    "ClickHook",
     "ColumnsContainer",
     "Container",
     "DashComponent",
@@ -131,6 +134,7 @@ __all__ = [
     "FormElement",
     "FrameComponent",
     "HtmlComponent",
+    "IframeComponent",
     "ImageComponent",
     "MarkdownComponent",
     "PlotlyComponent",
