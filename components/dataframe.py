@@ -52,9 +52,34 @@ class ClickHook:
         return set(HOOK_PLACEHOLDER_RE.findall(self.template))
 
 
+def _normalize_column_hooks(
+    column_hooks: dict[str, Any] | None,
+) -> dict[str, list[ClickHook]]:
+    """Coerce column_hooks values into lists of ClickHook.
+
+    Accepts either a single ClickHook or a list/tuple per column. Within a
+    column, two hooks with the same `on` value is a configuration error
+    (the second would never fire) and is caught here.
+    """
+    if not column_hooks:
+        return {}
+    out: dict[str, list[ClickHook]] = {}
+    for col, val in column_hooks.items():
+        if isinstance(val, ClickHook):
+            out[col] = [val]
+        elif isinstance(val, (list, tuple)):
+            out[col] = list(val)
+        else:
+            raise TypeError(
+                f"column_hooks[{col!r}] must be a ClickHook or list of "
+                f"ClickHook, got {type(val).__name__}"
+            )
+    return out
+
+
 def _validate_hooks(
     row_hook: ClickHook | None,
-    column_hooks: dict[str, ClickHook],
+    column_hooks: dict[str, list[ClickHook]],
     columns: list[str],
 ) -> None:
     """Validate ClickHook templates against the dataframe's columns.
@@ -70,11 +95,27 @@ def _validate_hooks(
             f"column_hooks references columns not in dataframe: {bad_keys}"
         )
 
+    # No two hooks on the same column may share a click type — the second
+    # one would shadow the first and never fire.
+    for col, hooks in column_hooks.items():
+        seen: set[str] = set()
+        dupes: set[str] = set()
+        for h in hooks:
+            if h.on in seen:
+                dupes.add(h.on)
+            seen.add(h.on)
+        if dupes:
+            problems.append(
+                f"column_hooks[{col!r}] has multiple hooks with on="
+                f"{sorted(dupes)}"
+            )
+
     missing_placeholders: set[str] = set()
     if row_hook is not None:
         missing_placeholders |= row_hook.placeholders() - column_set
-    for hook in column_hooks.values():
-        missing_placeholders |= hook.placeholders() - column_set
+    for hooks in column_hooks.values():
+        for h in hooks:
+            missing_placeholders |= h.placeholders() - column_set
     if missing_placeholders:
         problems.append(
             f"ClickHook templates reference unknown columns: "
@@ -193,8 +234,12 @@ _CLICK_HOOK_JS_TEMPLATE = r"""
 
                 function resolveHook(event, clickType) {
                     var col = event.args.column.datafield;
-                    var colHook = HOOKS.columns ? HOOKS.columns[col] : undefined;
-                    if (colHook && colHook.on === clickType) return colHook;
+                    var colHooks = HOOKS.columns ? HOOKS.columns[col] : undefined;
+                    if (colHooks) {
+                        for (var i = 0; i < colHooks.length; i++) {
+                            if (colHooks[i].on === clickType) return colHooks[i];
+                        }
+                    }
                     if (HOOKS.row && HOOKS.row.on === clickType) return HOOKS.row;
                     return null;
                 }
@@ -218,7 +263,10 @@ _CLICK_HOOK_JS_TEMPLATE = r"""
                     if (HOOKS.row && HOOKS.row.on === clickType) return true;
                     if (HOOKS.columns) {
                         for (var k in HOOKS.columns) {
-                            if (HOOKS.columns[k].on === clickType) return true;
+                            var list = HOOKS.columns[k];
+                            for (var i = 0; i < list.length; i++) {
+                                if (list[i].on === clickType) return true;
+                            }
                         }
                     }
                     return false;
@@ -293,9 +341,9 @@ class FrameComponent(BaseComponent):
     format_number_tuples: list[tuple[str, str]]
     format_tuples: list[tuple[str, str]]
     sum_columns: list[str]
-    # Click hook settings
+    # Click hook settings (column_hooks normalized to list-per-column at init)
     row_hook: ClickHook | None = None
-    column_hooks: dict[str, ClickHook]
+    column_hooks: dict[str, list[ClickHook]]
 
     def __init__(
         self,
@@ -309,7 +357,9 @@ class FrameComponent(BaseComponent):
         self.format_tuples = kwargs.pop("format_tuples", [])
         self.sum_columns = kwargs.pop("sum_columns", [])
         self.row_hook = kwargs.pop("row_hook", None)
-        self.column_hooks = kwargs.pop("column_hooks", {}) or {}
+        self.column_hooks = _normalize_column_hooks(
+            kwargs.pop("column_hooks", None)
+        )
 
         # Set attributes from kwargs
         for key in [
@@ -687,9 +737,10 @@ class FrameComponent(BaseComponent):
         if self.row_hook is not None:
             hooks_dict["row"] = asdict(self.row_hook)
         if self.column_hooks:
+            # Each column maps to a LIST of hooks (one per click type).
             hooks_dict["columns"] = {
-                col: asdict(hook)
-                for col, hook in self.column_hooks.items()
+                col: [asdict(h) for h in hooks]
+                for col, hooks in self.column_hooks.items()
             }
 
         # Build the JS as a literal (no f-string) and substitute the two
