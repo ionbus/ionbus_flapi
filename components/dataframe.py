@@ -48,6 +48,13 @@ class ClickHook:
     target: str
     on: Literal["single", "double"] = "single"
 
+    def __post_init__(self) -> None:
+        if self.on not in ("single", "double"):
+            raise ValueError(
+                f"ClickHook.on must be 'single' or 'double', got "
+                f"{self.on!r}"
+            )
+
     def placeholders(self) -> set[str]:
         return set(HOOK_PLACEHOLDER_RE.findall(self.template))
 
@@ -68,6 +75,12 @@ def _normalize_column_hooks(
         if isinstance(val, ClickHook):
             out[col] = [val]
         elif isinstance(val, (list, tuple)):
+            for i, item in enumerate(val):
+                if not isinstance(item, ClickHook):
+                    raise TypeError(
+                        f"column_hooks[{col!r}][{i}] must be a ClickHook, "
+                        f"got {type(item).__name__}"
+                    )
             out[col] = list(val)
         else:
             raise TypeError(

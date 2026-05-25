@@ -5,6 +5,7 @@ Layout components for organizing content.
 
 from __future__ import annotations
 
+import html
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pandas as pd
@@ -146,6 +147,11 @@ class IframeComponent(BaseComponent):
     The `frame_name` attribute becomes the HTML `name=""` on the iframe;
     set the same string as a ClickHook's `target` to make grid clicks
     load URLs into this iframe.
+
+    Security note: `frame_name`, `src`, `width`, and `height` are
+    HTML-escaped on render. `style` is interpolated raw — it's intended
+    for app-author-controlled inline CSS (e.g. `"width: 100%; height:
+    240px"`). Do NOT pass untrusted input through `style`.
     """
 
     class_name: ClassVar[str] = "IframeComponent"
@@ -178,17 +184,22 @@ class IframeComponent(BaseComponent):
     def get_html(self) -> str:
         style_bits = []
         if self.width is not None:
-            style_bits.append(f"width: {self.width}")
+            style_bits.append(f"width: {html.escape(self.width, quote=True)}")
         if self.height is not None:
-            style_bits.append(f"height: {self.height}")
+            style_bits.append(
+                f"height: {html.escape(self.height, quote=True)}"
+            )
         if self.style:
+            # Trusted raw CSS — see class docstring.
             style_bits.append(self.style)
         style_attr = (
             f' style="{"; ".join(style_bits)}"' if style_bits else ""
         )
         return (
-            f'<iframe id="iframe{self.name}" name="{self.frame_name}" '
-            f'src="{self.src}"{style_attr}></iframe>'
+            f'<iframe id="iframe{html.escape(self.name, quote=True)}" '
+            f'name="{html.escape(self.frame_name, quote=True)}" '
+            f'src="{html.escape(self.src, quote=True)}"{style_attr}>'
+            f'</iframe>'
         )
 
 

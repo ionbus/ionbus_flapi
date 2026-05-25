@@ -362,3 +362,339 @@ class TestBannerFunctions:
         html = banner_html()
         assert 'id="popupBanner"' in html
         assert "display: none" in html
+
+
+class TestClickHook:
+    """Tests for ClickHook dataclass."""
+
+    def test_basic_construction(self):
+        from ionbus_flapi.components.dataframe import ClickHook
+        h = ClickHook("/x?s={symbol}", target="frame")
+        assert h.template == "/x?s={symbol}"
+        assert h.target == "frame"
+        assert h.on == "single"
+
+    def test_on_double(self):
+        from ionbus_flapi.components.dataframe import ClickHook
+        h = ClickHook("/x", target="f", on="double")
+        assert h.on == "double"
+
+    def test_on_invalid_raises(self):
+        from ionbus_flapi.components.dataframe import ClickHook
+        with pytest.raises(ValueError, match="must be 'single' or 'double'"):
+            ClickHook("/x", target="f", on="bad")
+
+    def test_placeholders_extracted(self):
+        from ionbus_flapi.components.dataframe import ClickHook
+        h = ClickHook(
+            "/x?s={symbol}&p={price}&s2={symbol}", target="f",
+        )
+        assert h.placeholders() == {"symbol", "price"}
+
+    def test_placeholders_empty_for_static_template(self):
+        from ionbus_flapi.components.dataframe import ClickHook
+        h = ClickHook("/static/path", target="f")
+        assert h.placeholders() == set()
+
+
+class TestNormalizeColumnHooks:
+    """Tests for _normalize_column_hooks helper."""
+
+    def test_none_returns_empty(self):
+        from ionbus_flapi.components.dataframe import _normalize_column_hooks
+        assert _normalize_column_hooks(None) == {}
+
+    def test_empty_dict_returns_empty(self):
+        from ionbus_flapi.components.dataframe import _normalize_column_hooks
+        assert _normalize_column_hooks({}) == {}
+
+    def test_single_hook_wrapped_in_list(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _normalize_column_hooks,
+        )
+        h = ClickHook("/x", target="f")
+        result = _normalize_column_hooks({"col": h})
+        assert result == {"col": [h]}
+
+    def test_list_input_kept_as_list(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _normalize_column_hooks,
+        )
+        h1 = ClickHook("/a", target="A")
+        h2 = ClickHook("/b", target="B", on="double")
+        result = _normalize_column_hooks({"col": [h1, h2]})
+        assert result == {"col": [h1, h2]}
+
+    def test_tuple_input_coerced_to_list(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _normalize_column_hooks,
+        )
+        h = ClickHook("/x", target="f")
+        result = _normalize_column_hooks({"col": (h,)})
+        assert isinstance(result["col"], list)
+        assert result["col"] == [h]
+
+    def test_bad_value_type_raises(self):
+        from ionbus_flapi.components.dataframe import _normalize_column_hooks
+        with pytest.raises(
+            TypeError, match="must be a ClickHook or list",
+        ):
+            _normalize_column_hooks({"col": "not a hook"})
+
+    def test_bad_list_item_raises_with_position(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _normalize_column_hooks,
+        )
+        h = ClickHook("/x", target="f")
+        with pytest.raises(
+            TypeError, match=r"\[1\] must be a ClickHook",
+        ):
+            _normalize_column_hooks({"col": [h, "bad"]})
+
+
+class TestValidateHooks:
+    """Tests for _validate_hooks helper."""
+
+    def test_no_problems(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        row = ClickHook("/x?s={a}", target="f")
+        col_hooks = {"b": [ClickHook("/y?s={a}", target="g")]}
+        # Should not raise
+        _validate_hooks(row, col_hooks, ["a", "b"])
+
+    def test_unknown_column_key(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        col_hooks = {"nope": [ClickHook("/x", target="f")]}
+        with pytest.raises(ValueError, match="not in dataframe"):
+            _validate_hooks(None, col_hooks, ["a"])
+
+    def test_missing_placeholder_in_row_hook(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        row = ClickHook("/x?s={zzz}", target="f")
+        with pytest.raises(ValueError, match="reference unknown columns"):
+            _validate_hooks(row, {}, ["a"])
+
+    def test_missing_placeholder_in_column_hook(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        col_hooks = {"a": [ClickHook("/x?s={zzz}", target="f")]}
+        with pytest.raises(ValueError, match="reference unknown columns"):
+            _validate_hooks(None, col_hooks, ["a"])
+
+    def test_duplicate_click_type_on_same_column(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        col_hooks = {
+            "a": [
+                ClickHook("/1", target="f"),
+                ClickHook("/2", target="g"),  # both default on="single"
+            ],
+        }
+        with pytest.raises(ValueError, match="multiple hooks with on"):
+            _validate_hooks(None, col_hooks, ["a"])
+
+    def test_multiple_problems_reported_together(self):
+        """One pass should surface all problem categories at once."""
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, _validate_hooks,
+        )
+        row = ClickHook("/x?s={zzz}", target="f")
+        col_hooks = {"nope": [ClickHook("/y", target="g")]}
+        with pytest.raises(ValueError) as exc_info:
+            _validate_hooks(row, col_hooks, ["a"])
+        msg = str(exc_info.value)
+        assert "not in dataframe" in msg
+        assert "reference unknown columns" in msg
+
+
+class TestFrameComponentHooks:
+    """Tests for FrameComponent's row_hook / column_hooks support."""
+
+    @staticmethod
+    def _df():
+        import pandas as pd
+        return pd.DataFrame(
+            {"symbol": ["AAPL", "GOOG"], "price": [185.0, 142.5]},
+        )
+
+    def test_no_hooks_no_hook_js(self):
+        """FrameComponent with no hooks must not emit hook setup JS."""
+        from ionbus_flapi.components.dataframe import FrameComponent
+        fc = FrameComponent(self._df(), name="g")
+        assert fc.row_hook is None
+        assert fc.column_hooks == {}
+        js = fc.get_document_ready_js()
+        assert "FLAPI_GRID_HOOKS" not in js
+
+    def test_row_hook_emits_hook_js(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, FrameComponent,
+        )
+        fc = FrameComponent(
+            self._df(),
+            name="g",
+            row_hook=ClickHook("/x?s={symbol}", target="f"),
+        )
+        js = fc.get_document_ready_js()
+        assert "FLAPI_GRID_HOOKS" in js
+        assert "cellclick" in js
+
+    def test_column_hooks_normalized_to_list(self):
+        """Even a single ClickHook input becomes a list internally."""
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, FrameComponent,
+        )
+        h = ClickHook("/x?s={symbol}", target="f")
+        fc = FrameComponent(
+            self._df(), name="g", column_hooks={"price": h},
+        )
+        assert fc.column_hooks == {"price": [h]}
+
+    def test_treegrid_with_hooks_raises(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, FrameComponent,
+        )
+        import pandas as pd
+        df = pd.DataFrame({
+            "tg_key": [1, 2], "tg_parent": [None, 1],
+            "symbol": ["AAPL", "GOOG"], "price": [185.0, 142.5],
+        })
+        with pytest.raises(RuntimeError, match="tree grid"):
+            FrameComponent(
+                df,
+                name="g",
+                is_treegrid=True,
+                row_hook=ClickHook("/x?s={symbol}", target="f"),
+            )
+
+    def test_invalid_template_raises_at_construction(self):
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, FrameComponent,
+        )
+        with pytest.raises(ValueError, match="reference unknown columns"):
+            FrameComponent(
+                self._df(),
+                name="g",
+                row_hook=ClickHook("/x?s={nonexistent}", target="f"),
+            )
+
+    def test_emitted_hook_config_shape(self):
+        """Parse the JS hook config back to JSON and verify the structure."""
+        import json
+        import re
+        from ionbus_flapi.components.dataframe import (
+            ClickHook, FrameComponent,
+        )
+        fc = FrameComponent(
+            self._df(),
+            name="testgrid",
+            row_hook=ClickHook("/r?s={symbol}", target="A"),
+            column_hooks={
+                "price": [
+                    ClickHook("/c1?s={symbol}", target="B", on="single"),
+                    ClickHook("/c2?s={symbol}", target="C", on="double"),
+                ],
+            },
+        )
+        js = fc.get_document_ready_js()
+        m = re.search(
+            r'FLAPI_GRID_HOOKS\["testgrid"\]\s*=\s*(\{.+?\});', js,
+        )
+        assert m is not None, "expected FLAPI_GRID_HOOKS assignment"
+        config = json.loads(m.group(1))
+        assert config["row"] == {
+            "template": "/r?s={symbol}",
+            "target": "A",
+            "on": "single",
+        }
+        assert config["columns"]["price"] == [
+            {"template": "/c1?s={symbol}", "target": "B", "on": "single"},
+            {"template": "/c2?s={symbol}", "target": "C", "on": "double"},
+        ]
+
+
+class TestIframeComponent:
+    """Tests for IframeComponent class."""
+
+    def test_basic_html(self):
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(frame_name="myframe", name="i1")
+        html = c.get_html()
+        assert 'name="myframe"' in html
+        assert 'src="about:blank"' in html
+        assert 'id="iframei1"' in html
+
+    def test_empty_frame_name_raises(self):
+        from ionbus_flapi.components.layout import IframeComponent
+        with pytest.raises(ValueError, match="non-empty frame_name"):
+            IframeComponent(frame_name="")
+
+    def test_src_width_height(self):
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(
+            frame_name="f",
+            src="/some/url",
+            width="100%",
+            height="200px",
+            name="i1",
+        )
+        html = c.get_html()
+        assert 'src="/some/url"' in html
+        assert "width: 100%" in html
+        assert "height: 200px" in html
+
+    def test_frame_name_quote_does_not_break_attribute(self):
+        """A quote in frame_name must NOT break out of the HTML attribute."""
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(
+            frame_name='evil"><script>x</script>', name="i1",
+        )
+        html = c.get_html()
+        # Raw <script> must NOT appear — would mean attribute injection
+        assert "<script>x</script>" not in html
+        # The escaped form must appear
+        assert "&quot;" in html
+
+    def test_src_with_injection_payload_escaped(self):
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(
+            frame_name="f", src='"><script>x</script>', name="i1",
+        )
+        html = c.get_html()
+        assert "<script>x</script>" not in html
+        assert "&quot;" in html or "&lt;script&gt;" in html
+
+    def test_width_with_payload_escaped(self):
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(
+            frame_name="f",
+            width='"><script>x</script>',
+            name="i1",
+        )
+        html = c.get_html()
+        assert "<script>x</script>" not in html
+
+    def test_style_is_trusted_raw_css(self):
+        """`style` is intentionally NOT escaped — documented trusted input.
+
+        This test locks the contract: if a future change starts escaping
+        `style`, normal CSS like `color: red; border: 1px solid blue` will
+        still pass through unchanged.
+        """
+        from ionbus_flapi.components.layout import IframeComponent
+        c = IframeComponent(
+            frame_name="f",
+            style="color: red; border: 1px solid blue",
+            name="i1",
+        )
+        html = c.get_html()
+        assert "color: red" in html
+        assert "border: 1px solid blue" in html
