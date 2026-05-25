@@ -140,6 +140,58 @@ class ColumnsContainer(Container):
         return ret_str
 
 
+class IframeComponent(BaseComponent):
+    """Named iframe component for use as a ClickHook target.
+
+    The `frame_name` attribute becomes the HTML `name=""` on the iframe;
+    set the same string as a ClickHook's `target` to make grid clicks
+    load URLs into this iframe.
+    """
+
+    class_name: ClassVar[str] = "IframeComponent"
+    frame_name: str = ""
+    src: str = "about:blank"
+    width: str | None = None
+    height: str | None = None
+    style: str | None = None
+
+    def __init__(
+        self,
+        frame_name: str,
+        src: str = "about:blank",
+        width: str | None = None,
+        height: str | None = None,
+        style: str | None = None,
+        page: FlapiPage | None = None,
+        name: str | int = "",
+        **kwargs: Any,
+    ):
+        if not frame_name:
+            raise ValueError("IframeComponent requires a non-empty frame_name")
+        self.frame_name = frame_name
+        self.src = src
+        self.width = width
+        self.height = height
+        self.style = style
+        super().__init__(page, name, **kwargs)
+
+    def get_html(self) -> str:
+        style_bits = []
+        if self.width is not None:
+            style_bits.append(f"width: {self.width}")
+        if self.height is not None:
+            style_bits.append(f"height: {self.height}")
+        if self.style:
+            style_bits.append(self.style)
+        style_attr = (
+            f' style="{"; ".join(style_bits)}"' if style_bits else ""
+        )
+        return (
+            f'<iframe id="iframe{self.name}" name="{self.frame_name}" '
+            f'src="{self.src}"{style_attr}></iframe>'
+        )
+
+
 def pop_banner_js(duration: int | float = 3) -> str:
     """Returns the JavaScript for the pop banner."""
     return f"""
