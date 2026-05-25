@@ -208,7 +208,10 @@ _CLICK_HOOK_JS_TEMPLATE = r"""
                 }
 
                 function getRowData(event) {
-                    return $grid.jqxGrid("getrowdata", event.args.row);
+                    // JQX cellclick passes args.rowindex (numeric) and
+                    // args.row (metadata object). getrowdata wants the
+                    // numeric index.
+                    return $grid.jqxGrid("getrowdata", event.args.rowindex);
                 }
 
                 function anyHookOn(clickType) {
