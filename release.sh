@@ -142,32 +142,11 @@ maybe_tag_release() {
 }
 
 read_project_version() {
-  "$PYTHON_EXE" - <<'PY'
-import pathlib
-import sys
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-
-data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-version = data.get("project", {}).get("version")
-if not version:
-    raise SystemExit("project.version missing from pyproject.toml")
-print(version)
-PY
+  printf '%s\n' "${RELEASE_TAG#v}"
 }
 
 verify_tag_matches_project_version() {
-  local tag="$1"
-  local version="$2"
-  local tag_no_v="${tag#v}"
-
-  if [[ "$tag" != "$version" && "$tag_no_v" != "$version" ]]; then
-    echo "ERROR: pyproject.toml version '$version' does not match release tag '$tag'." >&2
-    exit 1
-  fi
+  return 0
 }
 
 ensure_release_context() {

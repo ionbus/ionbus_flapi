@@ -149,20 +149,16 @@ exit /b 0
 
 :read_project_version
 set "RELEASE_VERSION="
-for /f "usebackq delims=" %%I in (`"%PYTHON_EXE%" -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])"`) do set "RELEASE_VERSION=%%I"
+set "RELEASE_VERSION=%RELEASE_TAG%"
+if /I "%RELEASE_VERSION:~0,1%"=="v" set "RELEASE_VERSION=%RELEASE_VERSION:~1%"
 if not defined RELEASE_VERSION (
-    echo ERROR: failed to read project.version from pyproject.toml 1>&2
+    echo ERROR: failed to determine release version from git tag 1>&2
     exit /b 1
 )
 exit /b 0
 
 :verify_tag_matches_project_version
-set "TAG_NO_V=%RELEASE_TAG%"
-if /I "%TAG_NO_V:~0,1%"=="v" set "TAG_NO_V=%TAG_NO_V:~1%"
-if /I "%RELEASE_TAG%"=="%RELEASE_VERSION%" exit /b 0
-if /I "%TAG_NO_V%"=="%RELEASE_VERSION%" exit /b 0
-echo ERROR: pyproject.toml version "%RELEASE_VERSION%" does not match release tag "%RELEASE_TAG%". 1>&2
-exit /b 1
+exit /b 0
 
 :ensure_release_context
 if not defined ALLOW_DIRTY (

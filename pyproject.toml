@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "setuptools_scm[toml]>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ionbus_flapi"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A low-code framework for building web applications with Flask/FastAPI"
 readme = "readme.md"
 requires-python = ">=3.9"
@@ -83,6 +83,9 @@ packages = [
 [tool.setuptools.package-dir]
 ionbus_flapi = "."
 "ionbus_flapi.components" = "components"
+
+[tool.setuptools_scm]
+fallback_version = "0.1.0"
 
 [tool.setuptools.package-data]
 ionbus_flapi = ["py.typed"]
