@@ -6,7 +6,7 @@ package:
   version: {{ version }}
 
 source:
-  path: ../dist/ionbus_flapi-{{ version }}.tar.gz
+  url: {{ environ.get('CONDA_SOURCE_SDIST_URL') }}
 
 build:
   number: 0

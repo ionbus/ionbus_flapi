@@ -270,6 +270,7 @@ ensure_release_context() {
   verify_head_tag
   RELEASE_TAG="$(git describe --tags --exact-match)"
   export GIT_DESCRIBE_TAG="$RELEASE_TAG"
+  export CONDA_SOURCE_SDIST_URL="file://$(pwd)/dist/ionbus_flapi-${RELEASE_TAG}.tar.gz"
 }
 
 build_pip_artifacts() {

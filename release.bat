@@ -9,6 +9,7 @@ set "ANY_BRANCH="
 set "ALLOW_DIRTY="
 set "CREATED_TAG="
 set "RELEASE_TAG="
+set "CONDA_SOURCE_SDIST_URL="
 set "CONDA_BLD_DIR=%~dp0..\ionbus_flapi_conda-bld"
 if "%CONDA_SUBDIR%"=="" set "CONDA_SUBDIR=win-64"
 
@@ -155,6 +156,7 @@ call :verify_tag
 if errorlevel 1 exit /b 1
 set "RELEASE_TAG=%GIT_DESCRIBE_TAG%"
 set "GIT_DESCRIBE_TAG=%RELEASE_TAG%"
+set "CONDA_SOURCE_SDIST_URL=file:///%CD:\=/%/dist/ionbus_flapi-%RELEASE_TAG%.tar.gz"
 exit /b 0
 
 :get_conda_build_exe
