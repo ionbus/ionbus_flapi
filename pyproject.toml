@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -55,10 +55,17 @@ dependencies = [
 dash = [
     "dash>=2.0.0",
 ]
+test = [
+    "pytest>=7.0.0",
+    "dash>=2.0.0",
+]
 dev = [
     "pytest>=7.0.0",
+    "dash>=2.0.0",
     "black>=23.0.0",
+    "build>=1.0.0",
     "ruff>=0.1.0",
+    "twine>=5.0.0",
     "ipython>=8.0.0",
 ]
 
@@ -67,10 +74,15 @@ Homepage = "https://github.com/ionbus/ionbus_flapi"
 Documentation = "https://github.com/ionbus/ionbus_flapi#readme"
 Repository = "https://github.com/ionbus/ionbus_flapi"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["ionbus_flapi*"]
-exclude = ["tests*"]
+[tool.setuptools]
+packages = [
+    "ionbus_flapi",
+    "ionbus_flapi.components",
+]
+
+[tool.setuptools.package-dir]
+ionbus_flapi = "."
+"ionbus_flapi.components" = "components"
 
 [tool.setuptools.package-data]
 ionbus_flapi = ["py.typed"]
