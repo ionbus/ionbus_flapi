@@ -1,74 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE=""
-PYTHON_EXE="${PYTHON_EXE:-${HOME}/uv_envs/arm64/uv_312_flappy_dev/Scripts/python.exe}"
-UV_EXE="${UV_EXE:-uv}"
+ENV_NAME="pixi_312_flappy_x64"
+RUN_ENV="${HOME}/bin/python_env_management/run_env.sh"
+MODE="${1:-build-pip}"
 TAG_FLAG=""
 ANY_BRANCH=""
 ALLOW_DIRTY=""
 CREATED_TAG=""
 RELEASE_TAG=""
-RELEASE_VERSION=""
 
 usage() {
-  echo "Usage:"
-  echo "  $0 [all|build|send|build-pip|send-pip] [--tag] [--any-branch] [--allow-dirty]"
-  echo "  all/build/build-pip: build pip artifacts locally"
-  echo "  send/send-pip: publish pip artifacts with twine"
+  echo "Usage: $0 [all|build|send|build-pip|send-pip|build-conda|send-conda]"
+  echo "          [--tag] [--any-branch] [--allow-dirty]"
+  echo "  all: build and publish pip artifacts, then conda artifacts"
+  echo "  build: build pip and conda artifacts locally"
+  echo "  send: upload pip and conda artifacts"
+  echo "  build-pip: build pip artifacts only"
+  echo "  send-pip: upload pip artifacts only"
+  echo "  build-conda: build conda artifacts only"
+  echo "  send-conda: upload conda artifacts only"
   echo "  --tag: create and verify a new local git tag before running"
   echo "  --any-branch: skip the main-branch check"
-  echo "  --allow-dirty: allow build-pip/build/all from a dirty tree"
-  echo
-  echo "Environment:"
-  echo "  PYTHON_EXE defaults to: $PYTHON_EXE"
+  echo "  --allow-dirty: allow only build-conda to build a local test artifact"
 }
 
 for arg in "$@"; do
   case "$arg" in
     -h|--help|help) usage; exit 0 ;;
+  esac
+done
+
+for arg in "${@:2}"; do
+  case "$arg" in
     --tag) TAG_FLAG="--tag" ;;
     --any-branch) ANY_BRANCH="--any-branch" ;;
     --allow-dirty) ALLOW_DIRTY="--allow-dirty" ;;
-    all|build|send|build-pip|send-pip|build-conda|send-conda)
-      if [[ -n "$MODE" ]]; then
-        echo "ERROR: multiple release modes supplied: '$MODE' and '$arg'." >&2
-        usage
-        exit 2
-      fi
-      MODE="$arg"
-      ;;
     *) usage; exit 2 ;;
   esac
 done
-MODE="${MODE:-build-pip}"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT_DIR"
-
-case "$MODE" in
-  all|build|send|build-pip|send-pip) ;;
-  build-conda|send-conda)
-    echo "ERROR: ionbus_flapi has no conda-recipe directory; conda release modes are not supported." >&2
-    exit 2
-    ;;
-  *) usage; exit 2 ;;
-esac
-
-if [[ ! -x "$PYTHON_EXE" ]]; then
-  echo "ERROR: could not find executable Python at $PYTHON_EXE" >&2
-  echo "Set PYTHON_EXE to the flapi uv environment's python." >&2
+if [[ ! -x "$RUN_ENV" ]]; then
+  echo "ERROR: could not find run_env.sh at $RUN_ENV"
   exit 1
 fi
 
-if [[ -n "$ALLOW_DIRTY" ]]; then
-  case "$MODE" in
-    all|build|build-pip) ;;
-    *)
-      echo "ERROR: --allow-dirty is only supported with build-pip/build/all." >&2
-      exit 2
-      ;;
-  esac
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONDA_BLD_DIR="$(dirname "$ROOT_DIR")/$(basename "$ROOT_DIR")_conda-bld"
+cd "$ROOT_DIR"
+
+case "$MODE" in
+  all|build|send|build-pip|send-pip|build-conda|send-conda) ;;
+  *) usage; exit 2 ;;
+esac
+
+if [[ -n "$ALLOW_DIRTY" && "$MODE" != "build-conda" ]]; then
+  echo "ERROR: --allow-dirty is only supported with build-conda." >&2
+  exit 2
 fi
 if [[ -n "$ALLOW_DIRTY" && -n "$TAG_FLAG" ]]; then
   echo "ERROR: --allow-dirty cannot be combined with --tag." >&2
@@ -77,11 +65,24 @@ fi
 
 verify_main_branch() {
   local branch
-
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   if [[ "$branch" != "main" ]]; then
-    echo "ERROR: not on main branch (currently on '$branch')." >&2
-    echo "Use --any-branch to override." >&2
+    echo "ERROR: not on main branch (currently on '$branch'). Use --any-branch to override."
+    exit 1
+  fi
+}
+
+verify_head_tag() {
+  local expected_tag="${1:-}"
+  local current_tag
+
+  current_tag="$(git describe --tags --exact-match 2>/dev/null || true)"
+  if [[ -z "$current_tag" ]]; then
+    echo "ERROR: HEAD is not tagged."
+    exit 1
+  fi
+  if [[ -n "$expected_tag" && "$current_tag" != "$expected_tag" ]]; then
+    echo "ERROR: expected HEAD tag '$expected_tag' but found '$current_tag'"
     exit 1
   fi
 }
@@ -94,121 +95,91 @@ verify_clean_tree() {
   fi
 }
 
-verify_head_tag() {
-  local expected_tag="${1:-}"
-  local current_tag
+get_conda_build_exe() {
+  local conda_build_exe
 
-  current_tag="$(git describe --tags --exact-match 2>/dev/null || true)"
-  if [[ -z "$current_tag" ]]; then
-    echo "ERROR: HEAD is not tagged." >&2
-    exit 1
+  conda_build_exe="$("$RUN_ENV" "$ENV_NAME" which conda-build 2>/dev/null || true)"
+  if [[ -n "$conda_build_exe" ]]; then
+    printf '%s\n' "$conda_build_exe"
+    return 0
   fi
-  if [[ -n "$expected_tag" && "$current_tag" != "$expected_tag" ]]; then
-    echo "ERROR: expected HEAD tag '$expected_tag' but found '$current_tag'" >&2
-    exit 1
+  if command -v conda >/dev/null 2>&1; then
+    printf '%s\n' "conda"
+    return 0
+  fi
+  echo "ERROR: conda-build is not available in $ENV_NAME and conda is not on PATH"
+  exit 1
+}
+
+get_anaconda_exe() {
+  local anaconda_exe
+
+  anaconda_exe="$("$RUN_ENV" "$ENV_NAME" which anaconda 2>/dev/null || true)"
+  if [[ -n "$anaconda_exe" ]]; then
+    printf '%s\n' "$anaconda_exe"
+    return 0
+  fi
+  if command -v anaconda >/dev/null 2>&1; then
+    printf '%s\n' "anaconda"
+    return 0
+  fi
+  echo "ERROR: anaconda-client is not available in $ENV_NAME and anaconda is not on PATH"
+  exit 1
+}
+
+get_conda_output_path() {
+  local conda_build_exe
+
+  conda_build_exe="$(get_conda_build_exe)"
+  if [[ "$conda_build_exe" == "conda" ]]; then
+    conda build conda-recipe -c ionbus -c conda-forge --croot "$CONDA_BLD_DIR" --output | tail -n 1
+  else
+    "$conda_build_exe" conda-recipe -c ionbus -c conda-forge --croot "$CONDA_BLD_DIR" --output | tail -n 1
   fi
 }
 
 get_next_tag_name() {
   local output tag
 
-  output="$("$PYTHON_EXE" -m ionbus_utils.git_utils.auto_tag . --name-only 2>&1)"
-  tag="$(
-    printf '%s\n' "$output" \
-      | sed -nE "s/.*tag='([^']+)'.*/\1/p" \
-      | tail -n 1
-  )"
+  output="$("$RUN_ENV" "$ENV_NAME" python -m ionbus_utils.git_utils.auto_tag . --name-only 2>&1)"
+  tag="$(printf '%s\n' "$output" | sed -nE "s/.*tag='([^']+)'.*/\1/p" | tail -n 1)"
   if [[ -z "$tag" ]]; then
     tag="$(printf '%s\n' "$output" | awk 'NF { print }' | tail -n 1)"
   fi
   printf '%s\n' "$tag"
 }
 
-maybe_tag_release() {
-  if [[ "$TAG_FLAG" == "--tag" ]]; then
-    verify_clean_tree
-    CREATED_TAG="$(get_next_tag_name)"
-    if [[ -z "$CREATED_TAG" ]]; then
-      echo "ERROR: failed to compute new tag name" >&2
-      exit 1
-    fi
-    if git rev-parse -q --verify "refs/tags/$CREATED_TAG" >/dev/null; then
-      echo "ERROR: tag '$CREATED_TAG' already exists locally" >&2
-      exit 1
-    fi
-    git tag -a "$CREATED_TAG" -m "auto-tag $CREATED_TAG"
-    verify_head_tag "$CREATED_TAG"
-    echo "Created local tag: $CREATED_TAG"
-  fi
-}
+verify_dist_artifacts() {
+  local tag="$1"
 
-read_project_version() {
-  printf '%s\n' "${RELEASE_TAG#v}"
-}
-
-verify_tag_matches_project_version() {
-  return 0
-}
-
-ensure_release_context() {
-  if [[ -z "$ALLOW_DIRTY" ]]; then
-    verify_clean_tree
-  else
-    echo "WARNING: building local test artifact from a dirty tree." >&2
-  fi
-  verify_head_tag
-  RELEASE_TAG="$(git describe --tags --exact-match)"
-  RELEASE_VERSION="$(read_project_version)"
-  verify_tag_matches_project_version "$RELEASE_TAG" "$RELEASE_VERSION"
-}
-
-cleanup_python_artifacts() {
-  rm -rf build dist
-  find . -maxdepth 1 -name "*.egg-info" -exec rm -rf {} +
-}
-
-verify_python_artifacts() {
-  local version="$1"
-
-  "$PYTHON_EXE" - "$version" <<'PY' || {
-import pathlib
-import sys
-
-version = sys.argv[1]
-dist = pathlib.Path("dist")
-files = sorted(dist.iterdir()) if dist.is_dir() else []
-wheel = [path for path in files if path.suffix == ".whl" and version in path.name]
-sdist = [
-    path
-    for path in files
-    if path.name.endswith(".tar.gz") and version in path.name
-]
-sys.exit(0 if wheel and sdist else 1)
-PY
-    echo "ERROR: expected wheel and sdist for version $version in dist/" >&2
+  "$RUN_ENV" "$ENV_NAME" python -c "import pathlib, sys; tag=sys.argv[1]; files=sorted(pathlib.Path('dist').iterdir()) if pathlib.Path('dist').is_dir() else []; wheel=[p for p in files if p.suffix=='.whl' and tag in p.name]; sdist=[p for p in files if p.name.endswith('.tar.gz') and tag in p.name]; sys.exit(0 if wheel and sdist else 1)" "$tag" || {
+    echo "ERROR: expected wheel and sdist for tag $tag in dist/"
     exit 1
   }
 }
 
 verify_built_package_versions() {
-  local version="$1"
+  local tag="$1"
 
-  "$PYTHON_EXE" - "$version" <<'PY' || {
+  "$RUN_ENV" "$ENV_NAME" python -c '
 import email.parser
 import io
 import pathlib
+import re
 import sys
 import tarfile
 import zipfile
 
-version = sys.argv[1]
-wheels = sorted(pathlib.Path("dist").glob(f"*{version}*.whl"))
+tag = sys.argv[1]
+wheels = sorted(pathlib.Path("dist").glob(f"*{tag}*.whl"))
 if len(wheels) != 1:
-    raise SystemExit(f"expected exactly one wheel for {version}, found {len(wheels)}")
+    raise SystemExit(f"expected exactly one wheel for {tag}, found {len(wheels)}")
 
-sdists = sorted(pathlib.Path("dist").glob(f"*{version}*.tar.gz"))
+sdists = sorted(pathlib.Path("dist").glob(f"*{tag}*.tar.gz"))
 if len(sdists) != 1:
-    raise SystemExit(f"expected exactly one sdist for {version}, found {len(sdists)}")
+    raise SystemExit(f"expected exactly one sdist for {tag}, found {len(sdists)}")
+
+version_re = re.compile("__version__\\s*=\\s*([\\\"\\x27])([^\\\"\\x27]+)\\1")
 
 
 def parse_metadata_version(text):
@@ -217,12 +188,23 @@ def parse_metadata_version(text):
 
 
 with zipfile.ZipFile(wheels[0]) as zf:
-    metadata_names = [n for n in zf.namelist() if n.endswith(".dist-info/METADATA")]
+    names = zf.namelist()
+    metadata_names = [n for n in names if n.endswith(".dist-info/METADATA")]
     if len(metadata_names) != 1:
         raise SystemExit(
             f"expected exactly one wheel METADATA file, found {len(metadata_names)}"
         )
-    wheel_version = parse_metadata_version(zf.read(metadata_names[0]).decode("utf-8"))
+    version_names = [n for n in names if n == "ionbus_flapi/_version.py"]
+    if len(version_names) != 1:
+        raise SystemExit(
+            f"expected exactly one wheel _version.py, found {len(version_names)}"
+        )
+    metadata_version = parse_metadata_version(
+        zf.read(metadata_names[0]).decode("utf-8")
+    )
+    version_text = zf.read(version_names[0]).decode("utf-8")
+    runtime_match = version_re.search(version_text)
+    runtime_version = runtime_match.group(2) if runtime_match else None
 
 with tarfile.open(sdists[0], "r:gz") as tf:
     names = tf.getnames()
@@ -236,60 +218,177 @@ with tarfile.open(sdists[0], "r:gz") as tf:
     member = tf.extractfile(pkg_info_names[0])
     if member is None:
         raise SystemExit(f"could not read {pkg_info_names[0]}")
-    sdist_version = parse_metadata_version(
+    sdist_metadata_version = parse_metadata_version(
         io.TextIOWrapper(member, encoding="utf-8").read()
     )
 
-if wheel_version != version:
-    raise SystemExit(f"wheel version {wheel_version!r} does not match {version!r}")
-if sdist_version != version:
-    raise SystemExit(f"sdist version {sdist_version!r} does not match {version!r}")
-PY
-    echo "ERROR: built package metadata verification failed" >&2
+if runtime_version is None:
+    raise SystemExit("could not read runtime version from wheel _version.py")
+if metadata_version != runtime_version:
+    raise SystemExit(
+        "package metadata version does not match runtime version: "
+        f"{metadata_version!r} != {runtime_version!r}"
+    )
+if metadata_version != tag:
+    raise SystemExit(
+        f"package metadata version {metadata_version!r} does not match tag {tag!r}"
+    )
+if sdist_metadata_version != tag:
+    raise SystemExit(
+        f"sdist metadata version {sdist_metadata_version!r} does not match tag {tag!r}"
+    )
+' "$tag" || {
+    echo "ERROR: built package metadata/runtime version verification failed"
     exit 1
   }
 }
 
+cleanup_pip_artifacts() {
+  rm -rf build dist
+  find . -maxdepth 1 -name "*.egg-info" -exec rm -rf {} +
+}
+
+cleanup_conda_artifacts() {
+  rm -rf "$CONDA_BLD_DIR"
+}
+
+ensure_release_context() {
+  if [[ -z "$ALLOW_DIRTY" ]]; then
+    verify_clean_tree
+  else
+    echo "WARNING: building local conda test artifact from a dirty tree." >&2
+  fi
+  verify_head_tag
+  RELEASE_TAG="$(git describe --tags --exact-match)"
+  export GIT_DESCRIBE_TAG="$RELEASE_TAG"
+}
+
 build_pip_artifacts() {
+  local tag
+
+  cleanup_pip_artifacts
   ensure_release_context
-  cleanup_python_artifacts
+  tag="$RELEASE_TAG"
 
-  if "$PYTHON_EXE" -c "import build" >/dev/null 2>&1; then
-    "$PYTHON_EXE" -m build --no-isolation --skip-dependency-check
+  if "$RUN_ENV" "$ENV_NAME" python -c "import build" >/dev/null 2>&1; then
+    if ! "$RUN_ENV" "$ENV_NAME" python -m build --no-isolation --skip-dependency-check; then
+      "$RUN_ENV" "$ENV_NAME" python setup.py sdist bdist_wheel
+    fi
   else
-    echo "Python environment is missing 'build'; using uv run --extra dev."
-    "$UV_EXE" run --extra dev python -m build --no-isolation --skip-dependency-check
+    "$RUN_ENV" "$ENV_NAME" python setup.py sdist bdist_wheel
   fi
 
-  if "$PYTHON_EXE" -c "import twine" >/dev/null 2>&1; then
-    "$PYTHON_EXE" -m twine check dist/*
+  if "$RUN_ENV" "$ENV_NAME" python -c "import twine" >/dev/null 2>&1; then
+    "$RUN_ENV" "$ENV_NAME" python -c "import pathlib, subprocess, sys; files=sorted(str(p) for p in pathlib.Path('dist').glob('*')); sys.exit(subprocess.run([sys.executable, '-m', 'twine', 'check', *files], check=False).returncode if files else 1)"
   else
-    "$UV_EXE" run --extra dev python -m twine check dist/*
+    echo "WARNING: twine is not installed in $ENV_NAME; skipping twine check"
   fi
 
-  verify_python_artifacts "$RELEASE_VERSION"
-  verify_built_package_versions "$RELEASE_VERSION"
+  verify_dist_artifacts "$tag"
+  verify_built_package_versions "$tag"
   echo "Built pip artifacts in: $ROOT_DIR/dist"
-  echo "Version/tag used: $RELEASE_TAG"
+}
+
+build_conda_artifacts() {
+  local tag conda_build_exe conda_output_path
+
+  cleanup_conda_artifacts
+  ensure_release_context
+  tag="$RELEASE_TAG"
+  export GIT_DESCRIBE_TAG="$tag"
+
+  conda_build_exe="$(get_conda_build_exe)"
+  conda_output_path="$(get_conda_output_path)"
+  if [[ "$conda_build_exe" == "conda" ]]; then
+    conda build conda-recipe -c ionbus -c conda-forge --croot "$CONDA_BLD_DIR"
+  else
+    "$conda_build_exe" conda-recipe -c ionbus -c conda-forge --croot "$CONDA_BLD_DIR"
+  fi
+  if [[ ! -f "$conda_output_path" ]]; then
+    echo "ERROR: expected conda artifact was not created: $conda_output_path"
+    exit 1
+  fi
+  echo "Built conda artifact: $conda_output_path"
 }
 
 send_pip_artifacts() {
-  ensure_release_context
-  verify_python_artifacts "$RELEASE_VERSION"
-  verify_built_package_versions "$RELEASE_VERSION"
+  local tag
 
-  if "$PYTHON_EXE" -c "import twine" >/dev/null 2>&1; then
-    "$PYTHON_EXE" -m twine upload dist/*
-  else
-    echo "Python environment is missing 'twine'; using uv run --extra dev."
-    "$UV_EXE" run --extra dev python -m twine upload dist/*
+  ensure_release_context
+  tag="$RELEASE_TAG"
+  verify_dist_artifacts "$tag"
+  verify_built_package_versions "$tag"
+
+  "$RUN_ENV" "$ENV_NAME" python -c "import pathlib, subprocess, sys; files=sorted(str(p) for p in pathlib.Path('dist').glob('*')); sys.exit(subprocess.run([sys.executable, '-m', 'twine', 'upload', *files], check=False).returncode if files else 1)"
+}
+
+send_conda_artifacts() {
+  local tag conda_output_path anaconda_exe
+
+  ensure_release_context
+  tag="$RELEASE_TAG"
+  conda_output_path="$(get_conda_output_path)"
+  if [[ ! -f "$conda_output_path" ]]; then
+    echo "ERROR: expected conda artifact is missing: $conda_output_path"
+    exit 1
+  fi
+
+  anaconda_exe="$(get_anaconda_exe)"
+  "$anaconda_exe" -s anaconda.org upload -u ionbus "$conda_output_path"
+}
+
+build_release() {
+  build_pip_artifacts
+  build_conda_artifacts
+
+  echo
+  echo "Version/tag used: $RELEASE_TAG"
+}
+
+send_release() {
+  send_pip_artifacts
+  send_conda_artifacts
+}
+
+all_release() {
+  build_pip_artifacts
+  send_pip_artifacts
+  build_conda_artifacts
+  send_conda_artifacts
+
+  echo
+  echo "Version/tag used: $RELEASE_TAG"
+}
+
+maybe_tag_release() {
+  if [[ "$TAG_FLAG" == "--tag" ]]; then
+    CREATED_TAG="$(get_next_tag_name)"
+    if [[ -z "$CREATED_TAG" ]]; then
+      echo "ERROR: failed to compute new tag name"
+      exit 1
+    fi
+    if git rev-parse -q --verify "refs/tags/$CREATED_TAG" >/dev/null; then
+      echo "ERROR: tag '$CREATED_TAG' already exists locally"
+      exit 1
+    fi
+    git tag -a "$CREATED_TAG" -m "auto-tag $CREATED_TAG"
+    verify_head_tag "$CREATED_TAG"
+    echo "Created local tag: $CREATED_TAG"
   fi
 }
 
-[[ -n "$ANY_BRANCH" ]] || verify_main_branch
+if [[ -z "$ANY_BRANCH" ]]; then
+  verify_main_branch
+fi
+
 maybe_tag_release
 
 case "$MODE" in
-  all|build|build-pip) build_pip_artifacts ;;
-  send|send-pip) send_pip_artifacts ;;
+  build) build_release ;;
+  send) send_release ;;
+  build-pip) build_pip_artifacts ;;
+  build-conda) build_conda_artifacts ;;
+  send-pip) send_pip_artifacts ;;
+  send-conda) send_conda_artifacts ;;
+  all) all_release ;;
 esac

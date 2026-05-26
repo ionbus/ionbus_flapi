@@ -1,0 +1,49 @@
+{% set name = "ionbus-flapi" %}
+{% set version = environ.get('GIT_DESCRIBE_TAG', '0.0.0') %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  noarch: python
+  script: python -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python >=3.9,<3.14
+    - pip
+    - setuptools
+  run:
+    - python >=3.9,<3.14
+    - ionbus-utils
+    - fastapi >=0.100.0
+    - flask >=3.0.0
+    - uvicorn >=0.20.0
+    - waitress >=2.0.0
+    - pandas >=1.5.0
+    - plotly >=5.0.0
+    - markdown >=3.0.0
+    - pyyaml >=6.0.0
+    - python-multipart >=0.0.6
+    - pydantic-settings >=2.0.0
+    - starlette >=0.27.0
+    - dash >=2.0.0
+
+test:
+  imports:
+    - ionbus_flapi
+
+about:
+  home: https://github.com/ionbus/ionbus_flapi
+  license: MIT
+  license_family: MIT
+  summary: Low-code framework for building Flask and FastAPI web applications
+  dev_url: https://github.com/ionbus/ionbus_flapi
+  doc_url: https://github.com/ionbus/ionbus_flapi/blob/main/readme.md
+  description: |
+    A low-code framework for building web applications with Flask and FastAPI.

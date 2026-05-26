@@ -5,6 +5,11 @@ Flapi (FastAPI Low-code API) serves both human-facing webpages and APIs.
 
 from __future__ import annotations
 
+try:
+    from ionbus_flapi._version import __version__  # type: ignore
+except ImportError:
+    __version__ = "0.0.0"
+
 from ionbus_flapi.app import (
     FlapiApp,
     get_flapi,
@@ -79,6 +84,7 @@ from ionbus_flapi.components import (
 )
 
 __all__ = [
+    "__version__",
     # app
     "FlapiApp",
     "get_flapi",
