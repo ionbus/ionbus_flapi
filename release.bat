@@ -3,8 +3,7 @@ setlocal enabledelayedexpansion
 
 set "ENV_NAME=pixi_312_flappy_x64"
 set "RUN_ENV=%USERPROFILE%\bin\python_env_management\run-env.bat"
-set "MODE=%~1"
-if "%MODE%"=="" set "MODE=build-pip"
+set "MODE="
 set "TAG_FLAG="
 set "ANY_BRANCH="
 set "ALLOW_DIRTY="
@@ -12,40 +11,46 @@ set "CREATED_TAG="
 set "RELEASE_TAG="
 set "CONDA_BLD_DIR=%~dp0..\ionbus_flapi_conda-bld"
 
-if /I "%MODE%"=="-h" goto show_help
-if /I "%MODE%"=="--help" goto show_help
-if /I "%MODE%"=="help" goto show_help
-
-if /I "%MODE%"=="all" goto parse_options
-if /I "%MODE%"=="build" goto parse_options
-if /I "%MODE%"=="send" goto parse_options
-if /I "%MODE%"=="build-pip" goto parse_options
-if /I "%MODE%"=="send-pip" goto parse_options
-if /I "%MODE%"=="build-conda" goto parse_options
-if /I "%MODE%"=="send-conda" goto parse_options
-goto usage_error
-
 :parse_options
-shift
 if "%~1"=="" goto after_options
 if /I "%~1"=="-h" goto show_help
 if /I "%~1"=="--help" goto show_help
 if /I "%~1"=="help" goto show_help
 if /I "%~1"=="--tag" (
     set "TAG_FLAG=--tag"
+    shift
     goto parse_options
 )
 if /I "%~1"=="--any-branch" (
     set "ANY_BRANCH=--any-branch"
+    shift
     goto parse_options
 )
 if /I "%~1"=="--allow-dirty" (
     set "ALLOW_DIRTY=--allow-dirty"
+    shift
     goto parse_options
 )
+if /I "%~1"=="all" goto set_mode
+if /I "%~1"=="build" goto set_mode
+if /I "%~1"=="send" goto set_mode
+if /I "%~1"=="build-pip" goto set_mode
+if /I "%~1"=="send-pip" goto set_mode
+if /I "%~1"=="build-conda" goto set_mode
+if /I "%~1"=="send-conda" goto set_mode
 goto usage_error
 
+:set_mode
+if defined MODE (
+    echo ERROR: multiple release modes supplied: "%MODE%" and "%~1". 1>&2
+    goto usage_error
+)
+set "MODE=%~1"
+shift
+goto parse_options
+
 :after_options
+if not defined MODE set "MODE=build-pip"
 if defined ALLOW_DIRTY if /I not "%MODE%"=="build-conda" (
     echo ERROR: --allow-dirty is only supported with build-conda. 1>&2
     exit /b 2

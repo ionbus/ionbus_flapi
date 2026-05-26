@@ -3,7 +3,7 @@ set -euo pipefail
 
 ENV_NAME="pixi_312_flappy_x64"
 RUN_ENV="${HOME}/bin/python_env_management/run_env.sh"
-MODE="${1:-build-pip}"
+MODE=""
 TAG_FLAG=""
 ANY_BRANCH=""
 ALLOW_DIRTY=""
@@ -31,14 +31,23 @@ for arg in "$@"; do
   esac
 done
 
-for arg in "${@:2}"; do
+for arg in "$@"; do
   case "$arg" in
     --tag) TAG_FLAG="--tag" ;;
     --any-branch) ANY_BRANCH="--any-branch" ;;
     --allow-dirty) ALLOW_DIRTY="--allow-dirty" ;;
+    all|build|send|build-pip|send-pip|build-conda|send-conda)
+      if [[ -n "$MODE" ]]; then
+        echo "ERROR: multiple release modes supplied: '$MODE' and '$arg'." >&2
+        usage
+        exit 2
+      fi
+      MODE="$arg"
+      ;;
     *) usage; exit 2 ;;
   esac
 done
+MODE="${MODE:-build-pip}"
 
 if [[ ! -x "$RUN_ENV" ]]; then
   echo "ERROR: could not find run_env.sh at $RUN_ENV"
