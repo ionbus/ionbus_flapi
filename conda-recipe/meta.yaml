@@ -6,7 +6,7 @@ package:
   version: {{ version }}
 
 source:
-  path: ..
+  path: ../dist/ionbus_flapi-{{ version }}.tar.gz
 
 build:
   number: 0

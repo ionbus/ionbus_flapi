@@ -10,6 +10,7 @@ set "ALLOW_DIRTY="
 set "CREATED_TAG="
 set "RELEASE_TAG="
 set "CONDA_BLD_DIR=%~dp0..\ionbus_flapi_conda-bld"
+if "%CONDA_SUBDIR%"=="" set "CONDA_SUBDIR=win-64"
 
 :parse_options
 if "%~1"=="" goto after_options
@@ -280,6 +281,8 @@ exit /b 0
 :build_conda_release
 call :ensure_release_context
 if errorlevel 1 exit /b 1
+call :verify_dist
+if errorlevel 1 exit /b 1
 call :cleanup_conda
 call :get_conda_output
 if errorlevel 1 exit /b 1
@@ -312,6 +315,8 @@ exit /b %errorlevel%
 
 :send_conda_release
 call :ensure_release_context
+if errorlevel 1 exit /b 1
+call :verify_dist
 if errorlevel 1 exit /b 1
 call :get_conda_output
 if errorlevel 1 exit /b 1

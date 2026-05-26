@@ -17,10 +17,15 @@ log
 *.egg-info/
 dist/
 python_venv/
+.venv/
 # Conda build turds:
 build_env_setup.sh
 conda_build.sh
 metadata_conda_debug.yaml
+conda-bld/
+*.conda
+*.tar.bz2
+MANIFEST
 *.parquet 
 ignored 
 _version.py

@@ -305,6 +305,7 @@ build_conda_artifacts() {
   ensure_release_context
   tag="$RELEASE_TAG"
   export GIT_DESCRIBE_TAG="$tag"
+  verify_dist_artifacts "$tag"
 
   conda_build_exe="$(get_conda_build_exe)"
   conda_output_path="$(get_conda_output_path)"
@@ -336,6 +337,7 @@ send_conda_artifacts() {
 
   ensure_release_context
   tag="$RELEASE_TAG"
+  verify_dist_artifacts "$tag"
   conda_output_path="$(get_conda_output_path)"
   if [[ ! -f "$conda_output_path" ]]; then
     echo "ERROR: expected conda artifact is missing: $conda_output_path"
