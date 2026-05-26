@@ -3,6 +3,7 @@ set -euo pipefail
 
 MODE=""
 PYTHON_EXE="${PYTHON_EXE:-${HOME}/uv_envs/arm64/uv_312_flappy_dev/Scripts/python.exe}"
+UV_EXE="${UV_EXE:-uv}"
 TAG_FLAG=""
 ANY_BRANCH=""
 ALLOW_DIRTY=""
@@ -253,17 +254,17 @@ build_pip_artifacts() {
   ensure_release_context
   cleanup_python_artifacts
 
-  if ! "$PYTHON_EXE" -c "import build" >/dev/null 2>&1; then
-    echo "ERROR: Python environment is missing 'build'. Install it in the flapi uv env." >&2
-    exit 1
+  if "$PYTHON_EXE" -c "import build" >/dev/null 2>&1; then
+    "$PYTHON_EXE" -m build --no-isolation --skip-dependency-check
+  else
+    echo "Python environment is missing 'build'; using uv run --extra dev."
+    "$UV_EXE" run --extra dev python -m build --no-isolation --skip-dependency-check
   fi
-
-  "$PYTHON_EXE" -m build --no-isolation --skip-dependency-check
 
   if "$PYTHON_EXE" -c "import twine" >/dev/null 2>&1; then
     "$PYTHON_EXE" -m twine check dist/*
   else
-    echo "WARNING: twine is not installed; skipping twine check" >&2
+    "$UV_EXE" run --extra dev python -m twine check dist/*
   fi
 
   verify_python_artifacts "$RELEASE_VERSION"
@@ -277,12 +278,12 @@ send_pip_artifacts() {
   verify_python_artifacts "$RELEASE_VERSION"
   verify_built_package_versions "$RELEASE_VERSION"
 
-  if ! "$PYTHON_EXE" -c "import twine" >/dev/null 2>&1; then
-    echo "ERROR: Python environment is missing 'twine'. Install it in the flapi uv env." >&2
-    exit 1
+  if "$PYTHON_EXE" -c "import twine" >/dev/null 2>&1; then
+    "$PYTHON_EXE" -m twine upload dist/*
+  else
+    echo "Python environment is missing 'twine'; using uv run --extra dev."
+    "$UV_EXE" run --extra dev python -m twine upload dist/*
   fi
-
-  "$PYTHON_EXE" -m twine upload dist/*
 }
 
 [[ -n "$ANY_BRANCH" ]] || verify_main_branch

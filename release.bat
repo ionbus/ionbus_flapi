@@ -3,6 +3,7 @@ setlocal enabledelayedexpansion
 
 set "MODE="
 if "%PYTHON_EXE%"=="" set "PYTHON_EXE=%USERPROFILE%\uv_envs\arm64\uv_312_flappy_dev\Scripts\python.exe"
+if "%UV_EXE%"=="" set "UV_EXE=uv"
 set "TAG_FLAG="
 set "ANY_BRANCH="
 set "ALLOW_DIRTY="
@@ -230,14 +231,17 @@ if errorlevel 1 exit /b 1
 call :cleanup_pip
 "%PYTHON_EXE%" -c "import build"
 if errorlevel 1 (
-    echo ERROR: Python environment is missing "build". Install it in the flapi uv env. 1>&2
-    exit /b 1
+    echo Python environment is missing "build"; using uv run --extra dev.
+    "%UV_EXE%" run --extra dev python -m build --no-isolation --skip-dependency-check
+    if errorlevel 1 exit /b 1
+) else (
+    "%PYTHON_EXE%" -m build --no-isolation --skip-dependency-check
+    if errorlevel 1 exit /b 1
 )
-"%PYTHON_EXE%" -m build --no-isolation --skip-dependency-check
-if errorlevel 1 exit /b 1
 "%PYTHON_EXE%" -c "import twine"
 if errorlevel 1 (
-    echo WARNING: twine is not installed; skipping twine check 1>&2
+    "%UV_EXE%" run --extra dev python -m twine check dist/*
+    if errorlevel 1 exit /b 1
 ) else (
     "%PYTHON_EXE%" -c "import pathlib, subprocess, sys; files=sorted(str(p) for p in pathlib.Path('dist').glob('*')); sys.exit(subprocess.run([sys.executable, '-m', 'twine', 'check', *files], check=False).returncode if files else 1)"
     if errorlevel 1 exit /b 1
@@ -259,8 +263,9 @@ call :verify_built_package_versions
 if errorlevel 1 exit /b 1
 "%PYTHON_EXE%" -c "import twine"
 if errorlevel 1 (
-    echo ERROR: Python environment is missing "twine". Install it in the flapi uv env. 1>&2
-    exit /b 1
+    echo Python environment is missing "twine"; using uv run --extra dev.
+    "%UV_EXE%" run --extra dev python -m twine upload dist/*
+    exit /b %errorlevel%
 )
 "%PYTHON_EXE%" -m twine upload dist/*
 exit /b %errorlevel%
