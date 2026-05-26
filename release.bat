@@ -1,8 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "MODE=%~1"
-if "%MODE%"=="" set "MODE=build-pip"
+set "MODE="
 if "%PYTHON_EXE%"=="" set "PYTHON_EXE=%USERPROFILE%\uv_envs\arm64\uv_312_flappy_dev\Scripts\python.exe"
 set "TAG_FLAG="
 set "ANY_BRANCH="
@@ -11,40 +10,46 @@ set "CREATED_TAG="
 set "RELEASE_TAG="
 set "RELEASE_VERSION="
 
-if /I "%MODE%"=="-h" goto show_help
-if /I "%MODE%"=="--help" goto show_help
-if /I "%MODE%"=="help" goto show_help
-
-if /I "%MODE%"=="all" goto parse_options
-if /I "%MODE%"=="build" goto parse_options
-if /I "%MODE%"=="send" goto parse_options
-if /I "%MODE%"=="build-pip" goto parse_options
-if /I "%MODE%"=="send-pip" goto parse_options
-if /I "%MODE%"=="build-conda" goto conda_unsupported
-if /I "%MODE%"=="send-conda" goto conda_unsupported
-goto usage_error
-
-:parse_options
-shift
+:parse_args
 if "%~1"=="" goto after_options
 if /I "%~1"=="-h" goto show_help
 if /I "%~1"=="--help" goto show_help
 if /I "%~1"=="help" goto show_help
 if /I "%~1"=="--tag" (
     set "TAG_FLAG=--tag"
-    goto parse_options
+    shift
+    goto parse_args
 )
 if /I "%~1"=="--any-branch" (
     set "ANY_BRANCH=--any-branch"
-    goto parse_options
+    shift
+    goto parse_args
 )
 if /I "%~1"=="--allow-dirty" (
     set "ALLOW_DIRTY=--allow-dirty"
-    goto parse_options
+    shift
+    goto parse_args
 )
+if /I "%~1"=="all" goto set_mode
+if /I "%~1"=="build" goto set_mode
+if /I "%~1"=="send" goto set_mode
+if /I "%~1"=="build-pip" goto set_mode
+if /I "%~1"=="send-pip" goto set_mode
+if /I "%~1"=="build-conda" goto set_mode
+if /I "%~1"=="send-conda" goto set_mode
 goto usage_error
 
+:set_mode
+if defined MODE (
+    echo ERROR: multiple release modes supplied: "%MODE%" and "%~1". 1>&2
+    goto usage_error
+)
+set "MODE=%~1"
+shift
+goto parse_args
+
 :after_options
+if not defined MODE set "MODE=build-pip"
 if defined ALLOW_DIRTY (
     if /I "%MODE%"=="all" goto allow_dirty_ok
     if /I "%MODE%"=="build" goto allow_dirty_ok

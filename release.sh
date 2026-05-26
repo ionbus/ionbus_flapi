@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${1:-build-pip}"
+MODE=""
 PYTHON_EXE="${PYTHON_EXE:-${HOME}/uv_envs/arm64/uv_312_flappy_dev/Scripts/python.exe}"
 TAG_FLAG=""
 ANY_BRANCH=""
@@ -26,17 +26,21 @@ usage() {
 for arg in "$@"; do
   case "$arg" in
     -h|--help|help) usage; exit 0 ;;
-  esac
-done
-
-for arg in "${@:2}"; do
-  case "$arg" in
     --tag) TAG_FLAG="--tag" ;;
     --any-branch) ANY_BRANCH="--any-branch" ;;
     --allow-dirty) ALLOW_DIRTY="--allow-dirty" ;;
+    all|build|send|build-pip|send-pip|build-conda|send-conda)
+      if [[ -n "$MODE" ]]; then
+        echo "ERROR: multiple release modes supplied: '$MODE' and '$arg'." >&2
+        usage
+        exit 2
+      fi
+      MODE="$arg"
+      ;;
     *) usage; exit 2 ;;
   esac
 done
+MODE="${MODE:-build-pip}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
