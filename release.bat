@@ -158,9 +158,9 @@ set "GIT_DESCRIBE_TAG=%RELEASE_TAG%"
 exit /b 0
 
 :get_conda_build_exe
-set "CONDA_BUILD_EXE="
-for /f "usebackq delims=" %%I in (`call "%RUN_ENV%" "%ENV_NAME%" where conda-build 2^>nul`) do set "CONDA_BUILD_EXE=%%I"
-if defined CONDA_BUILD_EXE exit /b 0
+set "CONDA_BUILD_EXE=run-env"
+call "%RUN_ENV%" "%ENV_NAME%" conda-build --version >nul 2>nul
+if not errorlevel 1 exit /b 0
 where conda >nul 2>nul
 if errorlevel 1 (
     echo ERROR: conda-build is not available in %ENV_NAME% and conda is not on PATH
@@ -170,9 +170,9 @@ set "CONDA_BUILD_EXE=conda"
 exit /b 0
 
 :get_anaconda_exe
-set "ANACONDA_EXE="
-for /f "usebackq delims=" %%I in (`call "%RUN_ENV%" "%ENV_NAME%" where anaconda 2^>nul`) do set "ANACONDA_EXE=%%I"
-if defined ANACONDA_EXE exit /b 0
+set "ANACONDA_EXE=run-env"
+call "%RUN_ENV%" "%ENV_NAME%" anaconda --version >nul 2>nul
+if not errorlevel 1 exit /b 0
 where anaconda >nul 2>nul
 if errorlevel 1 (
     echo ERROR: anaconda-client is not available in %ENV_NAME% and anaconda is not on PATH
@@ -188,7 +188,7 @@ set "CONDA_OUTPUT_PATH="
 if /I "%CONDA_BUILD_EXE%"=="conda" (
     for /f "usebackq delims=" %%I in (`conda build conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%" --output`) do set "CONDA_OUTPUT_PATH=%%I"
 ) else (
-    for /f "usebackq delims=" %%I in (`"%CONDA_BUILD_EXE%" conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%" --output`) do set "CONDA_OUTPUT_PATH=%%I"
+    for /f "usebackq delims=" %%I in (`call "%RUN_ENV%" "%ENV_NAME%" conda-build conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%" --output`) do set "CONDA_OUTPUT_PATH=%%I"
 )
 if not defined CONDA_OUTPUT_PATH (
     echo ERROR: failed to compute conda artifact output path
@@ -290,7 +290,7 @@ if /I "%CONDA_BUILD_EXE%"=="conda" (
     conda build conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%"
     if errorlevel 1 exit /b 1
 ) else (
-    "%CONDA_BUILD_EXE%" conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%"
+    call "%RUN_ENV%" "%ENV_NAME%" conda-build conda-recipe -c ionbus -c conda-forge --croot "%CONDA_BLD_DIR%"
     if errorlevel 1 exit /b 1
 )
 if not exist "%CONDA_OUTPUT_PATH%" (
@@ -326,7 +326,11 @@ if not exist "%CONDA_OUTPUT_PATH%" (
 )
 call :get_anaconda_exe
 if errorlevel 1 exit /b 1
-"%ANACONDA_EXE%" -s anaconda.org upload -u ionbus "%CONDA_OUTPUT_PATH%"
+if /I "%ANACONDA_EXE%"=="anaconda" (
+    anaconda -s anaconda.org upload -u ionbus "%CONDA_OUTPUT_PATH%"
+) else (
+    call "%RUN_ENV%" "%ENV_NAME%" anaconda -s anaconda.org upload -u ionbus "%CONDA_OUTPUT_PATH%"
+)
 exit /b %errorlevel%
 
 :build_release
